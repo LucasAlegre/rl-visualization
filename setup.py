@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-REQUIRED = ['gym', 'numpy', 'pandas', 'matplotlib']
+REQUIRED = ['gym', 'numpy', 'pandas', 'matplotlib', 'seaborn', 'flask']
 
 with open("README.md", "r") as fh:
     long_description = fh.read()

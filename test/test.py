@@ -42,6 +42,7 @@ if __name__ == '__main__':
     out_csv = '{}_alpha{}_gamma{}_eps{}_decay{}_reward{}'.format(experiment_time, args.alpha, args.gamma, args.epsilon, args.decay, args.reward)
 
     env = SumoEnvironment(net_file='nets/single-intersection/single-intersection.net.xml',
+                          single_agent=True,
                           route_file=args.route,
                           out_csv_name=out_csv,
                           use_gui=args.gui,
@@ -59,34 +60,32 @@ if __name__ == '__main__':
         env._compute_rewards = env._queue_average_reward
     else:
         env._compute_rewards = env._waiting_time_reward
-    
+
     env = VisualizationEnv(env)
 
     for run in range(1, args.runs+1):
         initial_states = env.reset()
-        ql_agents = {ts: QLAgent(starting_state=env.encode(initial_states[ts]),
+        ql_agents = {ts: QLAgent(starting_state=env.encode(initial_states),
                                  state_space=env.observation_space,
                                  action_space=env.action_space,
                                  alpha=args.alpha,
                                  gamma=args.gamma,
                                  exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon, min_epsilon=args.min_epsilon, decay=args.decay)) for ts in env.ts_ids}
 
-        done = {'__all__': False}
-        infos = []
-        if args.fixed:
-            while not done['__all__']:
-                _, _, done, _ = env.step({})
-        else:
-            while not done['__all__']:
-                actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
+        env.set_agent(ql_agents['t'])
 
-                s, r, done, _ = env.step(action=actions)
+        done = False
+        while not done:
+            actions = {ts: ql_agents[ts].act() for ts in ql_agents.keys()}
 
-                if args.v:
-                    print('s=', env.radix_decode(ql_agents['t'].state), 'a=', actions['t'], 's\'=', env.radix_decode(env.encode(s['t'])), 'r=', r['t'])
+            s, r, done, _ = env.step(action=actions['t'])
 
-                for agent_id in ql_agents.keys():
-                    ql_agents[agent_id].learn(new_state=env.encode(s[agent_id]), reward=r[agent_id])
+            if args.v:
+                print('s=', env.radix_decode(ql_agents['t'].state), 'a=', actions['t'], 's\'=', env.radix_decode(env.encode(s['t'])), 'r=', r['t'])
+
+            for agent_id in ql_agents.keys():
+                ql_agents[agent_id].learn(new_state=env.encode(s), reward=r)
+
         env.save_csv(out_csv, run)
         env.close()
 

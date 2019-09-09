@@ -31,7 +31,7 @@ def start_app(env):
             return make_response('Unsupported request, probably feature names are wrong', 400)
 
 
-    @app.route('/plots/breast_cancer_data/correlation_matrix', methods=['GET'])
+    @app.route('/plots/q-table', methods=['GET'])
     def correlation_matrix():
         bytes_obj = env.get_qtable_png()
 
@@ -41,5 +41,5 @@ def start_app(env):
 
     app.jinja_env.auto_reload = True
     app.config['TEMPLATES_AUTO_RELOAD'] = True
-    app.run(debug=True)
+    app.run(debug=False)
 
