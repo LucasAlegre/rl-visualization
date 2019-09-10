@@ -1,5 +1,6 @@
 from flask import Flask, send_file, make_response, render_template
 import os
+from datetime import datetime
 from rl_visualization.plotting import get_correlation_matrix_as_bytes, get_breast_cancer_df, get_pair_plot_as_bytes
 
 
@@ -36,10 +37,10 @@ def start_app(env):
         bytes_obj = env.get_qtable_png()
 
         return send_file(bytes_obj,
-                        attachment_filename='plot.png',
+                        attachment_filename=str(datetime.now()).split('.')[0] + '_plot.png',
                         mimetype='image/png')
 
     app.jinja_env.auto_reload = True
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
     app.config['TEMPLATES_AUTO_RELOAD'] = True
     app.run(debug=False)
-

@@ -12,6 +12,7 @@ from rl_visualization.app import start_app
 sns.set(style='darkgrid')
 sns.set_context('talk')
 
+
 class VisualizationEnv(gym.Wrapper):
 
     def __init__(self, env, agent=None, path='./logs'):
@@ -75,7 +76,7 @@ class VisualizationEnv(gym.Wrapper):
 
     def q_table_to_df(self, num_rows=20):
         df = []
-        for exp in self.experiences[-20:]:
+        for exp in self.experiences[-num_rows:]:
             s = exp['obs']
             for i, q in enumerate(self.agent.q_table[s]):
                 df.append({'state': str(self.env.radix_decode(s)), 'action': i, 'q': q})
