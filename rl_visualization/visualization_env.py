@@ -92,6 +92,17 @@ class VisualizationEnv(gym.Wrapper):
             bytes_image.seek(0)
             return bytes_image
 
+    def get_rewards(self):
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title('Rewards')
+        plt.plot([exp[2] for exp in self.experiences])
+
+        plt.tight_layout()
+        bytes_image = io.BytesIO()
+        plt.savefig(bytes_image, format='png')
+        bytes_image.seek(0)
+        return bytes_image
+
     def q_table_to_df(self, num_rows=20):
         df = []
         for exp in self.experiences[-num_rows:]:
