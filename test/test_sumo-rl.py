@@ -84,7 +84,7 @@ if __name__ == '__main__':
                 print('s=', env.radix_decode(ql_agents['t'].state), 'a=', actions['t'], 's\'=', env.radix_decode(env.encode(s['t'])), 'r=', r['t'])
 
             for agent_id in ql_agents.keys():
-                ql_agents[agent_id].learn(new_state=env.encode(s), reward=r)
+                ql_agents[agent_id].learn(next_state=env.encode(s), reward=r)
 
         env.save_csv(out_csv, run)
         env.close()

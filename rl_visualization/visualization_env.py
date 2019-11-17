@@ -10,14 +10,15 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from threading import Thread
 from rl_visualization.app import start_app
+from math import sqrt, ceil
 
 sns.set(style='whitegrid')
-sns.set_context('talk')
+sns.set_context('paper')
 
 
 class VisualizationEnv(gym.Wrapper):
 
-    def __init__(self, env, agent=None, path='./logs'):
+    def __init__(self, env, agent=None, steps_lookback=1000, path='./logs'):
         """Gym Env wrapper for visualization
         
         Args:
@@ -27,6 +28,7 @@ class VisualizationEnv(gym.Wrapper):
         self.env = env
         
         self.agent = agent
+        self.steps_lookback = steps_lookback
 
         if not os.path.exists(path):
             os.mkdir(path)
@@ -43,7 +45,7 @@ class VisualizationEnv(gym.Wrapper):
     def step(self, action):
         next_obs, reward, done, info = self.env.step(action)
 
-        self.experiences.append((self.obs, action, reward, done))
+        self.experiences.append((self.obs, action, reward, next_obs, done))
         self.obs = next_obs
 
         return next_obs, reward, done, info
@@ -57,26 +59,65 @@ class VisualizationEnv(gym.Wrapper):
         self.app_process.start()
 
     def get_featuresdistribution(self):
-        f, ax = plt.subplots(figsize=(10, 10))
-        plt.title('Features Distribution')
+        if len(self.experiences) > 0:
+            f, ax = plt.subplots(figsize=(10, 10))
+            plt.title('Features Distribution')
 
-        dim = len(self.experiences[0][0])
+            dim = len(self.experiences[0][0])
 
-        d = []
-        for exp in self.experiences[-1000:]:
-            s = exp[0]
-            d.append({'f'+str(i): s[i] for i in range(dim)})
-        df = pd.DataFrame(d)
+            d = []
+            for exp in self.experiences[-self.steps_lookback:]:
+                s = exp[0]
+                d.append({'feature '+str(i): s[i] for i in range(dim)})
+            df = pd.DataFrame(d)
 
-        for i in range(dim):
-            plt.subplot(3, 4, i+1)
-            sns.distplot(df['f'+str(i)], hist=True, color="b", kde_kws={"shade": True}).set(xlim=(0, 1))
-        plt.tight_layout()
+            n = ceil(sqrt(dim))
+            for i in range(dim):
+                plt.subplot(n, n, i+1)
+                sns.distplot(df['feature '+str(i)], hist=True, color="b", kde_kws={"shade": True})
+            plt.tight_layout()
 
-        bytes_image = io.BytesIO()
-        plt.savefig(bytes_image, format='png')
-        bytes_image.seek(0)
-        return bytes_image
+            bytes_image = io.BytesIO()
+            plt.savefig(bytes_image, format='png')
+            bytes_image.seek(0)
+            return bytes_image
+        else:
+            return None
+
+    def get_actionsdistribution(self):
+        if len(self.experiences) > 0:
+            f, ax = plt.subplots()
+            plt.title('Actions Distribution')
+
+            if not hasattr(self.experiences[0][1], '__len__'): # int, float or numpy.int
+                dim = 1
+                d = []
+                for exp in self.experiences[-self.steps_lookback:]:
+                    a = exp[1]
+                    d.append({'action': a})
+                df = pd.DataFrame(d)
+                sns.distplot(df['action'], hist=True, color="r", kde=False)
+            else:
+                dim = len(self.experiences[0][1])
+                d = []
+                for exp in self.experiences[-self.steps_lookback:]:
+                    s = exp[1]
+                    d.append({'action '+str(i): s[i] for i in range(dim)})
+                df = pd.DataFrame(d)
+
+                n = ceil(sqrt(dim))
+                for i in range(dim):
+                    plt.subplot(n, n, i+1)
+                    sns.distplot(df['action '+str(i)], hist=True, color="r", kde_kws={"shade": True})
+
+            plt.tight_layout()
+
+            bytes_image = io.BytesIO()
+            plt.savefig(bytes_image, format='png')
+            bytes_image.seek(0)
+            return bytes_image
+        else:
+            return None
 
     def get_qtable_png(self):
         if self.agent is not None and hasattr(self.agent, 'q_table') and len(self.experiences) > 0:
@@ -91,27 +132,59 @@ class VisualizationEnv(gym.Wrapper):
             plt.savefig(bytes_image, format='png')
             bytes_image.seek(0)
             return bytes_image
+        else:
+            return None
 
     def get_rewards(self):
-        f, ax = plt.subplots(figsize=(14, 8))
-        plt.title('Rewards')
-        plt.plot([exp[2] for exp in self.experiences])
+        if len(self.experiences) > 0:
+            f, ax = plt.subplots(figsize=(14, 8))
+            plt.title('Rewards')
+            plt.plot([exp[2] for exp in self.experiences])
 
-        plt.tight_layout()
-        bytes_image = io.BytesIO()
-        plt.savefig(bytes_image, format='png')
-        bytes_image.seek(0)
-        return bytes_image
+            plt.tight_layout()
+            bytes_image = io.BytesIO()
+            plt.savefig(bytes_image, format='png')
+            bytes_image.seek(0)
+            return bytes_image
+        else:
+            return None
+    
+    def get_episoderewards(self):
+        if len(self.experiences) > 0:
+            f, ax = plt.subplots(figsize=(14, 8))
+            plt.title('Episode Rewards')
+
+            d = []
+            ep_reward = 0
+            for i in range(1, len(self.experiences)):
+                if self.experiences[i][4]:
+                    d.append({'step': i, 'Episode Rewards': ep_reward})
+                    ep_reward = 0
+                else:
+                    ep_reward += self.experiences[i][2]
+
+            if len(d) > 0:
+                sns.lineplot(x='step', y='Episode Rewards', data=pd.DataFrame(d))
+            else:
+                return None
+
+            plt.tight_layout()
+            bytes_image = io.BytesIO()
+            plt.savefig(bytes_image, format='png')
+            bytes_image.seek(0)
+            return bytes_image
+        else:
+            return None
 
     def q_table_to_df(self, num_rows=20):
         df = []
         for exp in self.experiences[-num_rows:]:
             s = self.env.encode(exp[0])
             for i, q in enumerate(self.agent.q_table[s]):
-                df.append({'state': str(self.env.radix_decode(s)), 'action': i, 'q': q})
+                df.append({'State': str(self.env.radix_decode(s)), 'Action': i, 'q': q})
         df = pd.DataFrame(df)
         df.drop_duplicates(subset=None, keep='first', inplace=True)
-        df = df.pivot(index='state', columns='action', values='q')
+        df = df.pivot(index='State', columns='Action', values='q')
         return df
     
     def join(self):
