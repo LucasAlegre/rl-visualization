@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
+
+<meta http-equiv="refresh" content={{refresh_time}}>
+
 <head>
     <title>Reinforcement Learning Visualization</title>
     <meta charset="utf-8">
@@ -17,6 +20,11 @@
 
 
 <div class="container" style="margin-top:30px">
+    <form>
+        Delay:<br>
+        <input type="number" name="delay" min="0"><br>
+    </form>
+
     <div class="row text-center">
         <div class="col-sm-12">
             <h1> Reinforcement Learning Visualization </h1>
@@ -25,14 +33,15 @@
         </div>
     </div>
 
+    {% for plot in plots %} 
     <hr/>
     <div class="row">
         <div class="col-sm-12">
-            <h3>Q-table</h3>
+            <h3>{{plot.title}}</h3>
             <div class="text-center code-container">
                 <code>
-                    <a href="{{ base_url }}plots/q-table">
-                        {{ base_url}}plots/q-table
+                    <a href="{{ base_url }}{{plot.url}}">
+                        {{ base_url}}{{plot.url}}
                     </a>
                 </code>
             </div>
@@ -41,12 +50,13 @@
     <div class="row">
         <div class="col-sm-12">
             <div class="img"><img class="img-fluid"
-                src="{{ base_url }}plots/q-table">
+                src="{{ base_url}}{{plot.url}}">
             </div>
         </div>
     </div>
+    {% endfor %} 
 
-    <hr/>
+<!--     <hr/>
     <div class="row">
         <div class="col-sm-12">
             <h3>Rewards</h3>
@@ -129,10 +139,10 @@
                                   src="{{ base_url }}plots/actionsdistribution">
             </div>
         </div>
-    </div>
-
+    </div> -->
 
 </div>
+
 <div class="jumbotron text-center" style="margin-bottom:0">
     <p>&copy; 2019 <a href="https://github.com/LucasAlegre"> Lucas Alegre</a></p>
 </div>

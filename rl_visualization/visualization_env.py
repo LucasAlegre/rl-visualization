@@ -1,5 +1,6 @@
 import io
 import os
+import time
 from datetime import datetime
 import gym
 import numpy as np
@@ -18,7 +19,8 @@ sns.set_context('paper')
 
 class VisualizationEnv(gym.Wrapper):
 
-    def __init__(self, env, agent=None, steps_lookback=1000, path='./logs'):
+    def __init__(self, env, agent=None, steps_lookback=1000, episodic=True, features_names=None, actions_names=None,
+                 epsilon_func=None, refresh_time=1000000, path='./logs'):
         """Gym Env wrapper for visualization
         
         Args:
@@ -29,12 +31,39 @@ class VisualizationEnv(gym.Wrapper):
         
         self.agent = agent
         self.steps_lookback = steps_lookback
+        self.episodic = episodic
+        self.epsilon_func = epsilon_func
+
+        if isinstance(self.observation_space, gym.spaces.Discrete):
+            self.state_dim = self.observation_space.n
+        elif isinstance(self.observation_space, gym.spaces.Box):
+            self.state_dim = self.observation_space.shape[0]
+        else:
+            exit('Observation space not supported.')
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            self.action_dim = self.action_space.n
+        elif isinstance(self.action_space, gym.spaces.Box):
+            self.action_dim = self.action_space.shape[0]
+        else:
+            exit('Action space not supported')
+        if features_names is not None:
+            self.features_names = features_names
+        else:
+            self.features_names = ['feature_'+str(i) for i in range(self.state_dim)]
+        if actions_names is not None:
+            self.actions_names = actions_names
+        else:
+            self.actions_names = ['action'+str(i) for i in range(self.action_dim)]
 
         if not os.path.exists(path):
             os.mkdir(path)
         
         self.filepath = os.path.join(path, 'rl_vis' + str(datetime.now()).split('.')[0] + "." + 'csv')
+        self.refresh_time = refresh_time
+        self.delay = 0
+
         self.experiences = []
+        self.epsilon = []
         self.obs = None
 
         self.start_app()
@@ -45,8 +74,13 @@ class VisualizationEnv(gym.Wrapper):
     def step(self, action):
         next_obs, reward, done, info = self.env.step(action)
 
+        time.sleep(self.delay)
+
         self.experiences.append((self.obs, action, reward, next_obs, done))
         self.obs = next_obs
+
+        if self.epsilon_func is not None:
+            self.epsilon.append(self.epsilon_func())
 
         return next_obs, reward, done, info
 
@@ -57,135 +91,138 @@ class VisualizationEnv(gym.Wrapper):
     def start_app(self):
         self.app_process = Thread(target=start_app, args=(self,))
         self.app_process.start()
+    
+    def get_available_plots(self):
+        plots = []
+        if len(self.experiences) == 0:
+            return plots
+
+        if self.agent is not None and hasattr(self.agent, 'q_table'):
+            plots.append('Q-table')
+        plots.append('Rewards')
+        if self.episodic:
+            plots.append('Episode Rewards')
+        if self.epsilon_func is not None:
+            plots.append('Epsilon')
+        plots.extend(['Features Distributions', 'Actions Distributions'])
+
+        return plots
 
     def get_featuresdistribution(self):
-        if len(self.experiences) > 0:
-            f, ax = plt.subplots(figsize=(10, 10))
-            plt.title('Features Distribution')
+        f, ax = plt.subplots()
+        plt.title('Features Distribution')
 
-            dim = len(self.experiences[0][0])
+        d = []
+        for exp in self.experiences[-self.steps_lookback:]:
+            s = exp[0]
+            d.append({self.features_names[i]: s[i] for i in range(self.state_dim)})
+        df = pd.DataFrame(d)
 
-            d = []
-            for exp in self.experiences[-self.steps_lookback:]:
-                s = exp[0]
-                d.append({'feature '+str(i): s[i] for i in range(dim)})
-            df = pd.DataFrame(d)
+        n = ceil(sqrt(self.state_dim))
+        for i in range(self.state_dim):
+            plt.subplot(1 if n == self.state_dim else n, n, i+1)
+            sns.distplot(df[self.features_names[i]], hist=True, color="b", kde_kws={"shade": True})
+        plt.tight_layout()
 
-            n = ceil(sqrt(dim))
-            for i in range(dim):
-                plt.subplot(n, n, i+1)
-                sns.distplot(df['feature '+str(i)], hist=True, color="b", kde_kws={"shade": True})
-            plt.tight_layout()
-
-            bytes_image = io.BytesIO()
-            plt.savefig(bytes_image, format='png')
-            bytes_image.seek(0)
-            return bytes_image
-        else:
-            return None
+        return self.plot_to_bytes(plt)
 
     def get_actionsdistribution(self):
-        if len(self.experiences) > 0:
-            f, ax = plt.subplots()
-            plt.title('Actions Distribution')
+        f, ax = plt.subplots()
+        plt.title('Actions Distribution')
 
-            if not hasattr(self.experiences[0][1], '__len__'): # int, float or numpy.int
-                dim = 1
-                d = []
-                for exp in self.experiences[-self.steps_lookback:]:
-                    a = exp[1]
-                    d.append({'action': a})
-                df = pd.DataFrame(d)
-                sns.distplot(df['action'], hist=True, color="r", kde=False)
-            else:
-                dim = len(self.experiences[0][1])
-                d = []
-                for exp in self.experiences[-self.steps_lookback:]:
-                    s = exp[1]
-                    d.append({'action '+str(i): s[i] for i in range(dim)})
-                df = pd.DataFrame(d)
-
-                n = ceil(sqrt(dim))
-                for i in range(dim):
-                    plt.subplot(n, n, i+1)
-                    sns.distplot(df['action '+str(i)], hist=True, color="r", kde_kws={"shade": True})
-
-            plt.tight_layout()
-
-            bytes_image = io.BytesIO()
-            plt.savefig(bytes_image, format='png')
-            bytes_image.seek(0)
-            return bytes_image
+        if not hasattr(self.experiences[0][1], '__len__'): # int, float or numpy.int
+            d = []
+            for exp in self.experiences[-self.steps_lookback:]:
+                a = exp[1]
+                d.append({'Action': self.actions_names[a]})
+            df = pd.DataFrame(d)
+            sns.catplot(x="Action", kind="count", data=df)
         else:
-            return None
+            d = []
+            for exp in self.experiences[-self.steps_lookback:]:
+                s = exp[1]
+                d.append({self.actions_names[i]: s[i] for i in range(self.action_dim)})
+            df = pd.DataFrame(d)
+
+            n = ceil(sqrt(self.action_dim))
+            for i in range(self.action_dim):
+                plt.subplot(1 if n == self.state_dim else n, n, i+1)
+                sns.distplot(df[self.actions_names[i]], hist=True, color="r", kde_kws={"shade": True})
+
+        plt.tight_layout()
+
+        return self.plot_to_bytes(plt)
 
     def get_qtable_png(self):
-        if self.agent is not None and hasattr(self.agent, 'q_table') and len(self.experiences) > 0:
-            f, ax = plt.subplots(figsize=(14, 8))
-            plt.title('Q-table')
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title('Q-table')
 
-            df = self.q_table_to_df(num_rows=20)
-            sns.heatmap(df, annot=True, fmt="g", cmap="PiYG", linewidths=.5, center=0.0)
-            plt.tight_layout()
+        df = self.q_table_to_df(num_rows=20)
+        sns.heatmap(df, annot=True, fmt="g", cmap="PiYG", linewidths=.5, center=0.0)
+        plt.tight_layout()
 
-            bytes_image = io.BytesIO()
-            plt.savefig(bytes_image, format='png')
-            bytes_image.seek(0)
-            return bytes_image
-        else:
-            return None
+        return self.plot_to_bytes(plt)
 
     def get_rewards(self):
-        if len(self.experiences) > 0:
-            f, ax = plt.subplots(figsize=(14, 8))
-            plt.title('Rewards')
-            plt.plot([exp[2] for exp in self.experiences])
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title('Rewards')
+        plt.xlabel('step')
+        plt.plot([exp[2] for exp in self.experiences], color='g')
 
-            plt.tight_layout()
-            bytes_image = io.BytesIO()
-            plt.savefig(bytes_image, format='png')
-            bytes_image.seek(0)
-            return bytes_image
-        else:
-            return None
+        plt.tight_layout()
+        return self.plot_to_bytes(plt)
     
     def get_episoderewards(self):
-        if len(self.experiences) > 0:
-            f, ax = plt.subplots(figsize=(14, 8))
-            plt.title('Episode Rewards')
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title('Episode Rewards')
 
-            d = []
-            ep_reward = 0
-            for i in range(1, len(self.experiences)):
-                if self.experiences[i][4]:
-                    d.append({'step': i, 'Episode Rewards': ep_reward})
-                    ep_reward = 0
-                else:
-                    ep_reward += self.experiences[i][2]
-
-            if len(d) > 0:
-                sns.lineplot(x='step', y='Episode Rewards', data=pd.DataFrame(d))
+        d = []
+        ep_reward = 0
+        for i in range(1, len(self.experiences)):
+            if self.experiences[i][4]:
+                d.append({'step': i, 'Episode Rewards': ep_reward})
+                ep_reward = 0
             else:
-                return None
+                ep_reward += self.experiences[i][2]
 
-            plt.tight_layout()
-            bytes_image = io.BytesIO()
-            plt.savefig(bytes_image, format='png')
-            bytes_image.seek(0)
-            return bytes_image
+        if len(d) > 0:
+            sns.lineplot(x='step', y='Episode Rewards', data=pd.DataFrame(d), color='orange')
         else:
             return None
+
+        plt.tight_layout()
+        return self.plot_to_bytes(plt)
+
+    def get_epsilon(self):
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title('Epsilon')
+        plt.xlabel('step')
+        plt.plot(self.epsilon)
+
+        plt.tight_layout()
+        bytes_image = io.BytesIO()
+        plt.savefig(bytes_image, format='png')
+        plt.close()
+        bytes_image.seek(0)
+        return bytes_image
 
     def q_table_to_df(self, num_rows=20):
         df = []
         for exp in self.experiences[-num_rows:]:
             s = self.env.encode(exp[0])
             for i, q in enumerate(self.agent.q_table[s]):
-                df.append({'State': str(self.env.radix_decode(s)), 'Action': i, 'q': q})
+                df.append({'State': str(self.env.radix_decode(s)), 'Action': self.actions_names[i], 'q': q})
         df = pd.DataFrame(df)
         df.drop_duplicates(subset=None, keep='first', inplace=True)
         df = df.pivot(index='State', columns='Action', values='q')
         return df
+
+    def plot_to_bytes(self, plot):
+        bytes_image = io.BytesIO()
+        plt.savefig(bytes_image, format='png')
+        plt.close()
+        bytes_image.seek(0)
+        return bytes_image
     
     def join(self):
         self.app_process.join()

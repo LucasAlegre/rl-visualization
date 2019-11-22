@@ -61,7 +61,12 @@ if __name__ == '__main__':
     else:
         env._compute_rewards = env._waiting_time_reward
 
-    env = VisualizationEnv(env)
+    env = VisualizationEnv(
+        env=env, 
+        episodic=False,
+        features_names=['Phase 0', 'Phase 1', 'Elapsed time'] + ['Density lane ' + str(i) for i in range(4)] + ['Queue lane ' + str(i) for i in range(4)],
+        actions_names=['Phase 0', 'Phase 1']
+    )
 
     for run in range(1, args.runs+1):
         initial_states = env.reset()
@@ -73,6 +78,7 @@ if __name__ == '__main__':
                                  exploration_strategy=EpsilonGreedy(initial_epsilon=args.epsilon, min_epsilon=args.min_epsilon, decay=args.decay)) for ts in env.ts_ids}
 
         env.set_agent(ql_agents['t'])
+        env.epsilon_func = lambda: ql_agents['t'].exploration.epsilon
 
         done = False
         while not done:
