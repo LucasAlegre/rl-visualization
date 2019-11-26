@@ -1,7 +1,6 @@
 import io
 import os
 import time
-from datetime import datetime
 import gym
 import numpy as np
 import pandas as pd
@@ -9,6 +8,8 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
+from collections import Counter
+from datetime import datetime
 from threading import Thread
 from rl_visualization.app import start_app
 from math import sqrt, ceil
@@ -64,6 +65,7 @@ class VisualizationEnv(gym.Wrapper):
 
         self.experiences = []
         self.epsilon = []
+        self.sa_counter = Counter()
         self.obs = None
 
         self.start_app()
@@ -74,9 +76,14 @@ class VisualizationEnv(gym.Wrapper):
     def step(self, action):
         next_obs, reward, done, info = self.env.step(action)
 
-        time.sleep(self.delay)
+        if self.delay > 0:
+            time.sleep(self.delay)
 
         self.experiences.append((self.obs, action, reward, next_obs, done))
+
+        if self.agent is not None and hasattr(self.agent, 'q_table'):
+            self.sa_counter.update([(self.env.encode(self.obs), action)])
+
         self.obs = next_obs
 
         if self.epsilon_func is not None:
@@ -99,9 +106,13 @@ class VisualizationEnv(gym.Wrapper):
 
         if self.agent is not None and hasattr(self.agent, 'q_table'):
             plots.append('Q-table')
+            plots.append('Visit Count')
+            self.q_table_to_df()
+
         plots.append('Rewards')
         if self.episodic:
             plots.append('Episode Rewards')
+
         if self.epsilon_func is not None:
             plots.append('Epsilon')
         plots.extend(['Features Distributions', 'Actions Distributions'])
@@ -157,8 +168,18 @@ class VisualizationEnv(gym.Wrapper):
         f, ax = plt.subplots(figsize=(14, 8))
         plt.title('Q-table')
 
-        df = self.q_table_to_df(num_rows=20)
+        df = self.df.pivot(index='State', columns='Action', values='q')
         sns.heatmap(df, annot=True, fmt="g", cmap="PiYG", linewidths=.5, center=0.0)
+        plt.tight_layout()
+
+        return self.plot_to_bytes(plt)
+    
+    def get_visitcount(self):
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title('Visit Count')
+
+        df = self.df.pivot(index='State', columns='Action', values='count')
+        sns.heatmap(df, annot=True, cmap="YlGnBu", linewidths=.5)
         plt.tight_layout()
 
         return self.plot_to_bytes(plt)
@@ -211,11 +232,10 @@ class VisualizationEnv(gym.Wrapper):
         for exp in self.experiences[-num_rows:]:
             s = self.env.encode(exp[0])
             for i, q in enumerate(self.agent.q_table[s]):
-                df.append({'State': str(self.env.radix_decode(s)), 'Action': self.actions_names[i], 'q': q})
+                df.append({'State': str(self.env.radix_decode(s)), 'Action': self.actions_names[i], 'q': q, 'count': self.sa_counter[(s, i)]})
         df = pd.DataFrame(df)
         df.drop_duplicates(subset=None, keep='first', inplace=True)
-        df = df.pivot(index='State', columns='Action', values='q')
-        return df
+        self.df = df
 
     def plot_to_bytes(self, plot):
         bytes_image = io.BytesIO()

@@ -18,6 +18,7 @@ def start_app(env):
 
     plots_url = {
         'Q-table': 'plots/q-table',
+        'Visit Count': 'plots/visitcount',
         'Rewards': 'plots/rewards',
         'Episode Rewards': 'plots/episoderewards',
         'Epsilon': 'plots/epsilon',
@@ -33,6 +34,14 @@ def start_app(env):
 
         plots = env.get_available_plots()
         return render_template('index.html', base_url=BASE_URL, plots=[Plot(p, plots_url[p]) for p in plots], refresh_time=env.refresh_time)
+
+    @app.route('/plots/visitcount', methods=['GET'])
+    def visitcount():
+        mutex.acquire()
+        bytes_obj = env.get_visitcount()
+        mutex.release()
+
+        return send_file(bytes_obj, attachment_filename='visitcount.png', mimetype='image/png')     
 
     @app.route('/plots/q-table', methods=['GET'])
     def q_table():  
