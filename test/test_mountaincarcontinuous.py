@@ -1,10 +1,13 @@
 import gym
+import numpy as np
 
-from stable_baselines.common.policies import MlpPolicy
+from stable_baselines.sac.policies import MlpPolicy
 from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines import PPO2
+from stable_baselines.common.noise import OrnsteinUhlenbeckActionNoise
+from stable_baselines import SAC
 
 from rl_visualization.visualization_env import VisualizationEnv
+
 
 if __name__ == '__main__':
 
@@ -17,16 +20,14 @@ if __name__ == '__main__':
         actions_names=['Push car to the left (negative value) or to the right (positive value)']
     )
 
-    env = DummyVecEnv([lambda: env])  # The algorithms require a vectorized environment to run
-
-    model = PPO2(MlpPolicy, env, verbose=1)
-    model.learn(total_timesteps=500000)
+    model = SAC(MlpPolicy, env, verbose=1, action_noise=OrnsteinUhlenbeckActionNoise(mean=np.zeros(1), sigma=0.5 * np.ones(1)))
+    model.learn(total_timesteps=60000)
 
     obs = env.reset()
-    for i in range(1000):
+    for i in range(100000):
         action, _states = model.predict(obs)
         obs, rewards, dones, info = env.step(action)
         env.render()
 
     env.close()
-    env.envs[0].join()
+    env.join()

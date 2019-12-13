@@ -20,8 +20,7 @@ sns.set_context('paper')
 
 class VisualizationEnv(gym.Wrapper):
 
-    def __init__(self, env, agent=None, steps_lookback=1000, episodic=True, features_names=None, actions_names=None,
-                 epsilon_func=None, refresh_time=1000000, path='./logs'):
+    def __init__(self, env, agent=None, steps_lookback=1000, episodic=True, features_names=None, actions_names=None, refresh_time=20, path='./logs'):
         """Gym Env wrapper for visualization
         
         Args:
@@ -33,7 +32,9 @@ class VisualizationEnv(gym.Wrapper):
         self.agent = agent
         self.steps_lookback = steps_lookback
         self.episodic = episodic
-        self.epsilon_func = epsilon_func
+
+        self.user_plots = {}
+        self.user_plots_values = {}
 
         if isinstance(self.observation_space, gym.spaces.Discrete):
             self.state_dim = self.observation_space.n
@@ -85,9 +86,9 @@ class VisualizationEnv(gym.Wrapper):
             self.sa_counter.update([(self.env.encode(self.obs), action)])
 
         self.obs = next_obs
-
-        if self.epsilon_func is not None:
-            self.epsilon.append(self.epsilon_func())
+        
+        for plot in self.user_plots:
+            self.user_plots_values[plot].append(self.user_plots[plot]())
 
         return next_obs, reward, done, info
 
@@ -113,14 +114,31 @@ class VisualizationEnv(gym.Wrapper):
         if self.episodic:
             plots.append('Episode Rewards')
 
-        if self.epsilon_func is not None:
-            plots.append('Epsilon')
         plots.extend(['Features Distributions', 'Actions Distributions'])
+
+        plots.extend(self.user_plots.keys())
 
         return plots
 
+    def add_plot(self, title, get_func):
+        self.user_plots[title] = get_func
+        self.user_plots_values[title] = []
+
+    def get_userplot(self, title):
+        f, ax = plt.subplots(figsize=(14, 8))
+        plt.title(title)
+        plt.xlabel('step')
+        plt.plot(self.user_plots_values[title])
+
+        plt.tight_layout()
+        bytes_image = io.BytesIO()
+        plt.savefig(bytes_image, format='png')
+        plt.close()
+        bytes_image.seek(0)
+        return bytes_image
+
     def get_featuresdistribution(self):
-        f, ax = plt.subplots()
+        f, ax = plt.subplots(figsize=(14, 8))
         plt.title('Features Distribution')
 
         d = []
@@ -213,19 +231,6 @@ class VisualizationEnv(gym.Wrapper):
 
         plt.tight_layout()
         return self.plot_to_bytes(plt)
-
-    def get_epsilon(self):
-        f, ax = plt.subplots(figsize=(14, 8))
-        plt.title('Epsilon')
-        plt.xlabel('step')
-        plt.plot(self.epsilon)
-
-        plt.tight_layout()
-        bytes_image = io.BytesIO()
-        plt.savefig(bytes_image, format='png')
-        plt.close()
-        bytes_image.seek(0)
-        return bytes_image
 
     def q_table_to_df(self, num_rows=20):
         df = []

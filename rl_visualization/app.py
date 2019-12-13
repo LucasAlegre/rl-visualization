@@ -21,19 +21,32 @@ def start_app(env):
         'Visit Count': 'plots/visitcount',
         'Rewards': 'plots/rewards',
         'Episode Rewards': 'plots/episoderewards',
-        'Epsilon': 'plots/epsilon',
+        #'Epsilon': 'plots/epsilon',
         'Features Distributions': 'plots/featuresdistribution',
         'Actions Distributions': 'plots/actionsdistribution'
     }
+    for plot in env.user_plots.keys():
+        plots_url[plot] = 'userplots/' + plot.lowercase
 
     @app.route('/')
     def index():
         delay = request.args.get('delay')
         if delay is not None:
             env.delay = int(delay)
+        
+        for plot in env.user_plots.keys():
+            plots_url[plot] = 'userplots/' + plot
 
         plots = env.get_available_plots()
         return render_template('index.html', base_url=BASE_URL, plots=[Plot(p, plots_url[p]) for p in plots], refresh_time=env.refresh_time)
+
+    @app.route('/userplots/<userplot>', methods=['GET'])
+    def user_plot(userplot):
+        mutex.acquire()
+        bytes_obj = env.get_userplot(userplot)
+        mutex.release()
+
+        return send_file(bytes_obj, attachment_filename=userplot+'.png', mimetype='image/png')     
 
     @app.route('/plots/visitcount', methods=['GET'])
     def visitcount():
@@ -67,13 +80,13 @@ def start_app(env):
 
         return send_file(bytes_obj, attachment_filename='episoderewards.png', mimetype='image/png')
 
-    @app.route('/plots/epsilon', methods=['GET'])
+    """     @app.route('/plots/epsilon', methods=['GET'])
     def epsilon():
         mutex.acquire()
         bytes_obj = env.get_epsilon()
         mutex.release()
 
-        return send_file(bytes_obj, attachment_filename='epsilon.png', mimetype='image/png')
+        return send_file(bytes_obj, attachment_filename='epsilon.png', mimetype='image/png')"""
 
     @app.route('/plots/featuresdistribution', methods=['GET'])
     def featuresdistribution():
@@ -90,6 +103,13 @@ def start_app(env):
         mutex.release()
 
         return send_file(bytes_obj, attachment_filename='actionsdistribution.png', mimetype='image/png')
+
+    """for plot in env.user_plots:
+        app.add_url_rule(
+            rule='/plots/'+plot.lowercase(),
+            endpoint='plots/user_func',
+
+        ) """
 
     app.jinja_env.auto_reload = True
     app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0

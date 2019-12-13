@@ -1,10 +1,15 @@
 import gym
-
-from stable_baselines.common.policies import MlpPolicy
-from stable_baselines.common.vec_env import DummyVecEnv
-from stable_baselines import PPO2
+from stable_baselines.deepq.policies import FeedForwardPolicy, MlpPolicy
+from stable_baselines import DQN
 
 from rl_visualization.visualization_env import VisualizationEnv
+
+class CustomDQNPolicy(FeedForwardPolicy):
+    def __init__(self, *args, **kwargs):
+        super(CustomDQNPolicy, self).__init__(*args, **kwargs,
+                                              layers=[64],
+                                              layer_norm=True,
+                                              feature_extraction="mlp")
 
 if __name__ == '__main__':
 
@@ -17,9 +22,7 @@ if __name__ == '__main__':
         actions_names=['Push cart to the left', 'Push cart to the right']
     )
 
-    env = DummyVecEnv([lambda: env])  # The algorithms require a vectorized environment to run
-
-    model = PPO2(MlpPolicy, env, verbose=1)
+    model = DQN(CustomDQNPolicy, env, verbose=1, learning_rate=1e-3, exploration_fraction=0.1, exploration_final_eps=0.02, prioritized_replay=True)
     model.learn(total_timesteps=100000)
 
     obs = env.reset()
